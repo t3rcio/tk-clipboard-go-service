@@ -23,8 +23,7 @@ type WSMessage struct {
 const MAX_RETRIES time.Duration = time.Duration(5)
 const SYNC_TIME time.Duration = time.Duration(3)
 
-func startSync(cfg *Config) {
-	// Inicializa o acesso ao Clipboard nativo do SO
+func startSync(cfg *Config, db *DB) {
 	err := clipboard.Init()
 	if err != nil {
 		log.Fatalf("Erro ao inicializar acesso ao Clipboard: %v", err)
@@ -56,7 +55,7 @@ func startSync(cfg *Config) {
 		// Channel para controlar cancelamento no disconnect
 		ctx, cancel := context.WithCancel(context.Background())
 
-		// Goroutine 1: Escuta mensagens do Servidor
+		// Goroutine 1: Obtem mesgs do servidor, persiste no banco e atualiza tray
 		go func() {
 			defer cancel()
 			for {
@@ -71,16 +70,22 @@ func startSync(cfg *Config) {
 					if msg.Type == "clipboard_update" && msg.SenderDeviceID != cfg.DeviceID {
 						fmt.Printf("📥 Recebido de [%s]: %s\n", msg.SenderDevice, msg.Content)
 						clipboard.Write(clipboard.FmtText, []byte(msg.Content))
+						db.Add(msg.Content)
+						updateTrayMenu()
 					}
 				}
 			}
 		}()
 
-		// Goroutine 2: Escuta alterações no Clipboard do SO local
+		// Goroutine 2: Monitora o Clipboard Local -> Salva no SQLite -> Envia pro WS
 		ch := clipboard.Watch(ctx, clipboard.FmtText)
 		for data := range ch {
 			text := strings.TrimSpace(string(data.Bytes))
 			if text != "" {
+				// Salva localmente
+				db.Add(text)
+				updateTrayMenu()
+
 				payload := WSMessage{Content: text}
 				payloadBytes, _ := json.Marshal(payload)
 
