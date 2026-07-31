@@ -54,8 +54,19 @@ mkdir -p "$SYSTEMD_DIR"
 echo -e "\n${YELLOW}-> Obtendo o código-fonte...${NC}"
 git clone --depth 1 "$REPO_URL" "$TMP_DIR/repo" >/dev/null 2>&1
 
-echo -e "${YELLOW}-> Compilando o binário Go...${NC}"
-cd "$TMP_DIR/repo"
+# echo -e "${YELLOW}-> Compilando o binário Go...${NC}"
+# cd "$TMP_DIR/repo"
+
+echo -e "${YELLOW}-> Localizando módulo Go...${NC}"
+GOMOD_PATH=$(find "$TMP_DIR/repo" -name "go.mod" -print -quit)
+
+if [ -z "$GOMOD_PATH" ]; then
+    echo -e "${RED}[ERRO] Não foi possível encontrar o arquivo go.mod no repositório.${NC}"
+    exit 1
+fi
+
+GO_PROJECT_DIR=$(dirname "$GOMOD_PATH")
+cd "$GO_PROJECT_DIR"
 
 go build -o "$BIN_DIR/clipsync-daemon" .
 
