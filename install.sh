@@ -55,7 +55,7 @@ echo -e "\n${YELLOW}-> Obtendo o código-fonte...${NC}"
 git clone --depth 1 "$REPO_URL" "$TMP_DIR/repo" >/dev/null 2>&1
 
 echo -e "${YELLOW}-> Compilando o binário Go...${NC}"
-cd "$TMP_DIR/repo/daemon"
+cd "$TMP_DIR/repo"
 
 go build -o "$BIN_DIR/clipsync-daemon" .
 
