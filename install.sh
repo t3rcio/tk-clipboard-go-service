@@ -8,9 +8,9 @@ BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # Reset / No Color
 
-REPO_URL="https://github.com/t3rcio/tk-clipboard-manager.git"
+REPO_URL="https://github.com/t3rcio/tk-clipboard-go-service.git"
+BRANCH="ft-sqlite-system-tray"
 TMP_DIR=$(mktemp -d -t clipsync-build-XXXXXX)
-
 
 cleanup() {
     rm -rf "$TMP_DIR"
@@ -21,7 +21,7 @@ echo -e "${BLUE}=================================================="${NC}
 echo -e "${BLUE}        ClipSync Daemon - Instalação Automática    "${NC}
 echo -e "${BLUE}=================================================="${NC}
 
-DEFAULT_SERVER="http://wordpress.vps-kinghost.net"
+DEFAULT_SERVER="https://wordpress.vps-kinghost.net"
 SERVER_URL="${CLIPSYNC_SERVER:-$DEFAULT_SERVER}"
 
 if [ -z "$CLIPSYNC_SERVER" ]; then
@@ -33,6 +33,7 @@ fi
 
 echo -e "\n${YELLOW}-> Servidor configurado:${NC} $SERVER_URL"
 
+# 2. Verificação das dependências (Go e Git)
 if ! command -v go &> /dev/null; then
     echo -e "${RED}[ERRO] Go não encontrado no sistema. Por favor, instale o Go 1.18+ para compilar o daemon.${NC}"
     exit 1
@@ -43,19 +44,16 @@ if ! command -v git &> /dev/null; then
     exit 1
 fi
 
-
+# 3. Criação dos diretórios locais do usuário
 BIN_DIR="$HOME/.local/bin"
 SYSTEMD_DIR="$HOME/.config/systemd/user"
 
 mkdir -p "$BIN_DIR"
 mkdir -p "$SYSTEMD_DIR"
 
-
-echo -e "\n${YELLOW}-> Obtendo o código-fonte...${NC}"
-git clone --depth 1 "$REPO_URL" "$TMP_DIR/repo" >/dev/null 2>&1
-
-# echo -e "${YELLOW}-> Compilando o binário Go...${NC}"
-# cd "$TMP_DIR/repo"
+# 4. Clonando a branch específica e Compilando o Projeto
+echo -e "\n${YELLOW}-> Obtendo o código-fonte (branch: $BRANCH)...${NC}"
+git clone --depth 1 -b "$BRANCH" "$REPO_URL" "$TMP_DIR/repo" >/dev/null 2>&1
 
 echo -e "${YELLOW}-> Localizando módulo Go...${NC}"
 GOMOD_PATH=$(find "$TMP_DIR/repo" -name "go.mod" -print -quit)
@@ -68,12 +66,13 @@ fi
 GO_PROJECT_DIR=$(dirname "$GOMOD_PATH")
 cd "$GO_PROJECT_DIR"
 
+echo -e "${YELLOW}-> Compilando o binário Go em $(pwd)...${NC}"
 go build -o "$BIN_DIR/clipsync-daemon" .
 
 chmod +x "$BIN_DIR/clipsync-daemon"
 echo -e "${GREEN}✓ Binário gerado em:${NC} $BIN_DIR/clipsync-daemon"
 
-
+# 5. Criação do Serviço no Systemd (User level)
 SERVICE_FILE="$SYSTEMD_DIR/clipsync.service"
 
 echo -e "\n${YELLOW}-> Criando serviço Systemd do usuário...${NC}"
@@ -94,7 +93,7 @@ EOF
 
 echo -e "${GREEN}✓ Serviço Systemd criado em:${NC} $SERVICE_FILE"
 
-
+# 6. Recarga e Ativação do Serviço
 echo -e "\n${YELLOW}-> Ativando e iniciando o serviço...${NC}"
 systemctl --user daemon-reload
 systemctl --user enable clipsync.service
