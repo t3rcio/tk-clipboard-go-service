@@ -6,19 +6,15 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
-NC='\033[0m' # Reset / No Color
+NC='\033[0m'
 
-REPO_URL="https://github.com/t3rcio/tk-clipboard-go-service.git"
-BRANCH="ft-sqlite-system-tray"
-TMP_DIR=$(mktemp -d -t clipsync-build-XXXXXX)
-
-cleanup() {
-    rm -rf "$TMP_DIR"
-}
-trap cleanup EXIT
+REPO="t3rcio/tk-clipboard-go-service"
+BIN_DIR="$HOME/.local/bin"
+SYSTEMD_DIR="$HOME/.config/systemd/user"
+SERVICE_FILE="$SYSTEMD_DIR/clipsync.service"
 
 echo -e "${BLUE}=================================================="${NC}
-echo -e "${BLUE}        ClipSync Daemon - Instalação Automática    "${NC}
+echo -e "${BLUE}        ClipSync Daemon - Instalação Rápida        "${NC}
 echo -e "${BLUE}=================================================="${NC}
 
 DEFAULT_SERVER="https://wordpress.vps-kinghost.net"
@@ -31,49 +27,40 @@ if [ -z "$CLIPSYNC_SERVER" ]; then
     fi
 fi
 
-echo -e "\n${YELLOW}-> Servidor configurado:${NC} $SERVER_URL"
+ARCH=$(uname -m)
+case "$ARCH" in
+    x86_64)
+        ASSET_NAME="clipsync-daemon-linux-amd64"
+        ;;
+    aarch64|arm64)
+        ASSET_NAME="clipsync-daemon-linux-arm64"
+        ;;
+    *)
+        echo -e "${RED}[ERRO] Arquitetura não suportada: $ARCH${NC}"
+        exit 1
+        ;;
+esac
 
-# 2. Verificação das dependências (Go e Git)
-if ! command -v go &> /dev/null; then
-    echo -e "${RED}[ERRO] Go não encontrado no sistema. Por favor, instale o Go 1.18+ para compilar o daemon.${NC}"
-    exit 1
-fi
+echo -e "\n${YELLOW}-> Arquitetura detectada:${NC} $ARCH ($ASSET_NAME)"
+echo -e "${YELLOW}-> URL do servidor:${NC} $SERVER_URL"
 
-if ! command -v git &> /dev/null; then
-    echo -e "${RED}[ERRO] Git não encontrado. Instale o git para continuar a instalação.${NC}"
-    exit 1
-fi
-
-# 3. Criação dos diretórios locais do usuário
-BIN_DIR="$HOME/.local/bin"
-SYSTEMD_DIR="$HOME/.config/systemd/user"
+DOWNLOAD_URL="https://github.com/$REPO/releases/latest/download/$ASSET_NAME"
 
 mkdir -p "$BIN_DIR"
 mkdir -p "$SYSTEMD_DIR"
 
-# 4. Clonando a branch específica e Compilando o Projeto
-echo -e "\n${YELLOW}-> Obtendo o código-fonte (branch: $BRANCH)...${NC}"
-git clone --depth 1 -b "$BRANCH" "$REPO_URL" "$TMP_DIR/repo" >/dev/null 2>&1
-
-echo -e "${YELLOW}-> Localizando módulo Go...${NC}"
-GOMOD_PATH=$(find "$TMP_DIR/repo" -name "go.mod" -print -quit)
-
-if [ -z "$GOMOD_PATH" ]; then
-    echo -e "${RED}[ERRO] Não foi possível encontrar o arquivo go.mod no repositório.${NC}"
+echo -e "\n${YELLOW}-> Baixando o executável compilado do GitHub...${NC}"
+if command -v curl &> /dev/null; then
+    curl -sSL "$DOWNLOAD_URL" -o "$BIN_DIR/clipsync-daemon"
+elif command -v wget &> /dev/null; then
+    wget -qO "$BIN_DIR/clipsync-daemon" "$DOWNLOAD_URL"
+else
+    echo -e "${RED}[ERRO] cURL ou Wget não encontrados. Instale um para continuar.${NC}"
     exit 1
 fi
 
-GO_PROJECT_DIR=$(dirname "$GOMOD_PATH")
-cd "$GO_PROJECT_DIR"
-
-echo -e "${YELLOW}-> Compilando o binário Go em $(pwd)...${NC}"
-go build -o "$BIN_DIR/clipsync-daemon" .
-
 chmod +x "$BIN_DIR/clipsync-daemon"
-echo -e "${GREEN}✓ Binário gerado em:${NC} $BIN_DIR/clipsync-daemon"
-
-# 5. Criação do Serviço no Systemd (User level)
-SERVICE_FILE="$SYSTEMD_DIR/clipsync.service"
+echo -e "${GREEN}✓ Executável instalado em:${NC} $BIN_DIR/clipsync-daemon"
 
 echo -e "\n${YELLOW}-> Criando serviço Systemd do usuário...${NC}"
 
@@ -91,16 +78,12 @@ RestartSec=5s
 WantedBy=default.target
 EOF
 
-echo -e "${GREEN}✓ Serviço Systemd criado em:${NC} $SERVICE_FILE"
-
-# 6. Recarga e Ativação do Serviço
-echo -e "\n${YELLOW}-> Ativando e iniciando o serviço...${NC}"
 systemctl --user daemon-reload
 systemctl --user enable clipsync.service
 systemctl --user restart clipsync.service
 
 echo -e "\n${GREEN}=================================================="${NC}
-echo -e "${GREEN} Instalação concluída com sucesso! 🎉"${NC}
+echo -e "${GREEN} ClipSync instalado e em execução! 🚀"${NC}
 echo -e "${GREEN}=================================================="${NC}
-echo -e "\nPara verificar os logs e pegar o PIN de pareamento:"
+echo -e "\nPara visualizar o PIN de pareamento:"
 echo -e "  ${YELLOW}journalctl --user -u clipsync -f${NC}\n"
