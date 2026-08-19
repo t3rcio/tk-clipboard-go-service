@@ -3,14 +3,25 @@ package main
 import (
 	"fmt"
 	"log"
+	"time"
 
 	"fyne.io/systray"
 	"golang.design/x/clipboard"
 )
 
+const MAX_ITEMS_ON_TRAY = 10
+const MAX_CHARS = 30
+
+type ClipSyncMenuItem struct {
+	mitem      *systray.MenuItem
+	id         string
+	text       string
+	created_at time.Time
+}
+
 var (
 	mHistoryTitle *systray.MenuItem
-	mHistoryItems []*systray.MenuItem
+	mHistoryItems []*ClipSyncMenuItem
 	mClearHistory *systray.MenuItem
 	mQuit         *systray.MenuItem
 	dbRef         *DB
@@ -25,24 +36,34 @@ func onReady() {
 	// Ícone genérico de prancheta (PNG simplificado)
 	systray.SetTemplateIcon(iconData, iconData)
 	systray.SetTitle("ClipSync")
-	systray.SetTooltip("ClipSync Clipboard Manager")
+	systray.SetTooltip("ClipSync Daemon")
 
 	mHistoryTitle = systray.AddMenuItem("📋 Histórico Recente", "Lista de itens copiados")
 	mHistoryTitle.Disable()
 	systray.AddSeparator()
 
-	// Cria slots para os 10 últimos itens
-	mHistoryItems = make([]*systray.MenuItem, 10)
-	for i := 0; i < 10; i++ {
-		mHistoryItems[i] = systray.AddMenuItem("", "")
-		mHistoryItems[i].Hide()
+	mHistoryItems = make([]*ClipSyncMenuItem, MAX_ITEMS_ON_TRAY)
+	for i := 0; i < MAX_ITEMS_ON_TRAY; i++ {
+		mHistoryItems[i] = &ClipSyncMenuItem{}
+		_item := systray.AddMenuItem("", "")
+		mHistoryItems[i].mitem = _item
+		mHistoryItems[i].mitem.Hide()
+		mHistoryItems[i].text = ""
+
+		// MenuItem actions
+		go func(i int, menuItem *ClipSyncMenuItem) {
+			for range menuItem.mitem.ClickedCh {
+				clipboard.Write(clipboard.FmtText, []byte(menuItem.text))
+				log.Printf("Copiado do histórico da bandeja: %s\n", menuItem.text)
+			}
+		}(i, mHistoryItems[i])
 	}
 
 	systray.AddSeparator()
 	mClearHistory = systray.AddMenuItem("🗑️ Limpar Histórico", "Apaga o histórico local")
 	mQuit = systray.AddMenuItem("❌ Sair", "Encerra o ClipSync")
 
-	// Goroutine para escutar ações nos menus
+	// MenuItem ordinary actions
 	go func() {
 		for {
 			select {
@@ -65,34 +86,37 @@ func updateTrayMenu() {
 		return
 	}
 
-	items, err := dbRef.List(10)
+	items, err := dbRef.List(MAX_ITEMS_ON_TRAY)
 	if err != nil {
 		log.Println("Erro ao ler histórico para a bandeja:", err)
 		return
 	}
 
-	for i := 0; i < 10; i++ {
+	for i := 0; i < MAX_ITEMS_ON_TRAY; i++ {
 		if i < len(items) {
 			itemText := items[i].Content
 			preview := itemText
-			if len(preview) > 30 {
-				preview = preview[:30] + "..."
-			}
 
-			mHistoryItems[i].SetTitle(fmt.Sprintf("%d. %s", i+1, preview))
-			mHistoryItems[i].SetTooltip(itemText)
-			mHistoryItems[i].Show()
+			if len(preview) > MAX_CHARS {
+				preview = preview[:MAX_CHARS] + "..."
+			}
+			mHistoryItems[i].text = items[i].Content
+			mHistoryItems[i].created_at = items[i].CreatedAt
+
+			mHistoryItems[i].mitem.SetTitle(fmt.Sprintf("%d. %s", i+1, preview))
+			mHistoryItems[i].mitem.SetTooltip(itemText)
+			mHistoryItems[i].mitem.Show()
 
 			// Trata clique no item
-			go func(menuItem *systray.MenuItem, text string) {
-				for range menuItem.ClickedCh {
-					clipboard.Write(clipboard.FmtText, []byte(text))
-					log.Printf("Copiado do histórico da bandeja: %s\n", text)
-				}
-			}(mHistoryItems[i], itemText)
+			// go func(menuItem *systray.MenuItem, text string) {
+			// 	for range menuItem.ClickedCh {
+			// 		clipboard.Write(clipboard.FmtText, []byte(text))
+			// 		log.Printf("Copiado do histórico da bandeja: %s\n", text)
+			// 	}
+			// }(mHistoryItems[i], itemText)
 
 		} else {
-			mHistoryItems[i].Hide()
+			mHistoryItems[i].mitem.Hide()
 		}
 	}
 }
